@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Medical Knowledge Base</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+        }
+        .container {
+            background-color: #f9f9f9;
+            border-radius: 5px;
+            padding: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        select, textarea, button {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        #result {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: white;
+            display: none;
+        }
+        .source {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #f1f1f1;
+            border-radius: 4px;
+        }
+        .loading {
+            text-align: center;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Medical Knowledge Base</h1>
+    
+    <div class="container">
+        <select id="book-select">
+            <option value="">Select a book</option>
+            {% for book in books %}
+            <option value="{{ book }}">{{ book }}</option>
+            {% endfor %}
+        </select>
+        
+        <textarea id="question" placeholder="Enter your medical question here..."></textarea>
+        
+        <button id="submit-btn">Ask Question</button>
+        
+        <div class="loading" id="loading">
+            <p>Searching for answer...</p>
+        </div>
+        
+        <div id="result">
+            <h3>Answer:</h3>
+            <div id="answer"></div>
+            
+            <h3>Sources:</h3>
+            <div id="sources"></div>
+        </div>
+    </div>
+    
+    <script>
+        document.getElementById('submit-btn').addEventListener('click', async () => {
+            const bookSelect = document.getElementById('book-select');
+            const questionInput = document.getElementById('question');
+            const loadingDiv = document.getElementById('loading');
+            const resultDiv = document.getElementById('result');
+            const answerDiv = document.getElementById('answer');
+            const sourcesDiv = document.getElementById('sources');
+            
+            const book = bookSelect.value;
+            const question = questionInput.value.trim();
+            
+            if (!book) {
+                alert('Please select a book');
+                return;
+            }
+            
+            if (!question) {
+                alert('Please enter a question');
+                return;
+            }
+            
+            // Show loading
+            loadingDiv.style.display = 'block';
+            resultDiv.style.display = 'none';
+            
+            try {
+                const response = await fetch('/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ book, question })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Display answer
+                    answerDiv.textContent = data.answer;
+                    
+                    // Display sources
+                    sourcesDiv.innerHTML = '';
+                    data.sources.forEach((source, index) => {
+                        const sourceDiv = document.createElement('div');
+                        sourceDiv.className = 'source';
+                        sourceDiv.innerHTML = `
+                            <p><strong>Source ${index + 1}:</strong> ${source.source}</p>
+                            <p><strong>Page:</strong> ${source.page}</p>
+                            <p><strong>Context:</strong> ${source.context}</p>
+                        `;
+                        sourcesDiv.appendChild(sourceDiv);
+                    });
+                    
+                    // Show result
+                    resultDiv.style.display = 'block';
+                } else {
+                    alert(`Error: ${data.error || 'Unknown error'}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                // Hide loading
+                loadingDiv.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html> 
