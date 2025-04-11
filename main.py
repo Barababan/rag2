@@ -19,10 +19,27 @@ class Query(BaseModel):
     question: str = Field(..., description="The question to be answered")
     conversation_history: Optional[List[dict]] = Field(default_factory=list, description="Previous conversation history")
 
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "question": "What is physical therapy?",
+                "conversation_history": []
+            }
+        }
+
 class Response(BaseModel):
     answer: str = Field(..., description="The answer to the question")
     sources: List[str] = Field(default_factory=list, description="Sources used to generate the answer")
     conversation_history: List[dict] = Field(default_factory=list, description="Updated conversation history")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "answer": "Physical therapy is a healthcare profession...",
+                "sources": ["source1.pdf", "source2.pdf"],
+                "conversation_history": []
+            }
+        }
 
 def enhance_query(query: str, conversation_history: List[dict]) -> str:
     """Enhance the query with context from conversation history."""
