@@ -1,5 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from fastapi.responses import HTMLResponse
+from fastapi import Request
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import logging
@@ -28,6 +32,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static files and templates
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
 
 # Initialize conversation history
 conversation_history = []
@@ -59,24 +67,17 @@ class Response(BaseModel):
             }
         }
 
-# Add root endpoint
-@app.get("/")
-async def root():
-    return {
-        "message": "Welcome to the Medical RAG System API",
-        "endpoints": {
-            "health": "/health",
-            "chat": "/chat",
-            "query": "/query"
-        }
-    }
+# Root endpoint that serves the chat interface
+@app.get("/", response_class=HTMLResponse)
+async def root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
-# Add health check endpoint
+# Health check endpoint
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
 
-# Add chat endpoint
+# Chat endpoint
 @app.get("/chat")
 async def chat_ui():
     return {"message": "Chat UI endpoint - implement your chat interface here"}

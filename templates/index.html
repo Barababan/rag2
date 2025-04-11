@@ -3,160 +3,164 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Medical Knowledge Base</title>
+    <title>Medical RAG Chat System</title>
     <style>
         body {
             font-family: Arial, sans-serif;
-            line-height: 1.6;
             max-width: 800px;
             margin: 0 auto;
             padding: 20px;
-            color: #333;
+            background-color: #f5f5f5;
         }
-        h1 {
-            color: #2c3e50;
-            text-align: center;
-        }
-        .container {
-            background-color: #f9f9f9;
-            border-radius: 5px;
+        .chat-container {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
             padding: 20px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
         }
-        select, textarea, button {
-            width: 100%;
+        .chat-messages {
+            height: 400px;
+            overflow-y: auto;
             padding: 10px;
-            margin-bottom: 15px;
             border: 1px solid #ddd;
-            border-radius: 4px;
-            box-sizing: border-box;
+            border-radius: 5px;
+            margin-bottom: 20px;
         }
-        textarea {
-            height: 100px;
-            resize: vertical;
+        .message {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .user-message {
+            background-color: #e3f2fd;
+            margin-left: 20%;
+        }
+        .bot-message {
+            background-color: #f5f5f5;
+            margin-right: 20%;
+        }
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        #user-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
         }
         button {
-            background-color: #3498db;
+            padding: 10px 20px;
+            background-color: #2196f3;
             color: white;
             border: none;
+            border-radius: 5px;
             cursor: pointer;
-            font-size: 16px;
         }
         button:hover {
-            background-color: #2980b9;
+            background-color: #1976d2;
         }
-        #result {
-            margin-top: 20px;
-            padding: 15px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            background-color: white;
-            display: none;
-        }
-        .source {
-            margin-top: 10px;
-            padding: 10px;
-            background-color: #f1f1f1;
-            border-radius: 4px;
+        .sources {
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 5px;
         }
         .loading {
-            text-align: center;
             display: none;
+            text-align: center;
+            margin: 10px 0;
         }
     </style>
 </head>
 <body>
-    <h1>Medical Knowledge Base</h1>
-    
-    <div class="container">
-        <select id="book-select">
-            <option value="">Select a book</option>
-            {% for book in books %}
-            <option value="{{ book }}">{{ book }}</option>
-            {% endfor %}
-        </select>
-        
-        <textarea id="question" placeholder="Enter your medical question here..."></textarea>
-        
-        <button id="submit-btn">Ask Question</button>
-        
-        <div class="loading" id="loading">
-            <p>Searching for answer...</p>
+    <div class="chat-container">
+        <h1>Medical RAG Chat System</h1>
+        <div class="chat-messages" id="chat-messages">
+            <div class="message bot-message">
+                Hello! I'm your medical assistant. How can I help you today?
+            </div>
         </div>
-        
-        <div id="result">
-            <h3>Answer:</h3>
-            <div id="answer"></div>
-            
-            <h3>Sources:</h3>
-            <div id="sources"></div>
+        <div class="loading" id="loading">
+            Thinking...
+        </div>
+        <div class="input-container">
+            <input type="text" id="user-input" placeholder="Type your question here..." />
+            <button onclick="sendMessage()">Send</button>
         </div>
     </div>
-    
+
     <script>
-        document.getElementById('submit-btn').addEventListener('click', async () => {
-            const bookSelect = document.getElementById('book-select');
-            const questionInput = document.getElementById('question');
-            const loadingDiv = document.getElementById('loading');
-            const resultDiv = document.getElementById('result');
-            const answerDiv = document.getElementById('answer');
-            const sourcesDiv = document.getElementById('sources');
+        let conversationHistory = [];
+
+        function addMessage(message, isUser = false) {
+            const chatMessages = document.getElementById('chat-messages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
             
-            const book = bookSelect.value;
-            const question = questionInput.value.trim();
-            
-            if (!book) {
-                alert('Please select a book');
-                return;
+            if (isUser) {
+                messageDiv.textContent = message;
+            } else {
+                messageDiv.innerHTML = message;
             }
             
-            if (!question) {
-                alert('Please enter a question');
-                return;
-            }
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        async function sendMessage() {
+            const userInput = document.getElementById('user-input');
+            const message = userInput.value.trim();
             
-            // Show loading
-            loadingDiv.style.display = 'block';
-            resultDiv.style.display = 'none';
+            if (!message) return;
+            
+            // Add user message to chat
+            addMessage(message, true);
+            userInput.value = '';
+            
+            // Show loading indicator
+            document.getElementById('loading').style.display = 'block';
             
             try {
-                const response = await fetch('/query', {
+                const response = await fetch('https://rag-lvmqca.fly.dev/query', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({ book, question })
+                    body: JSON.stringify({
+                        question: message,
+                        conversation_history: conversationHistory
+                    })
                 });
                 
                 const data = await response.json();
                 
-                if (response.ok) {
-                    // Display answer
-                    answerDiv.textContent = data.answer;
-                    
-                    // Display sources
-                    sourcesDiv.innerHTML = '';
-                    data.sources.forEach((source, index) => {
-                        const sourceDiv = document.createElement('div');
-                        sourceDiv.className = 'source';
-                        sourceDiv.innerHTML = `
-                            <p><strong>Source ${index + 1}:</strong> ${source.source}</p>
-                            <p><strong>Page:</strong> ${source.page}</p>
-                            <p><strong>Context:</strong> ${source.context}</p>
-                        `;
-                        sourcesDiv.appendChild(sourceDiv);
-                    });
-                    
-                    // Show result
-                    resultDiv.style.display = 'block';
-                } else {
-                    alert(`Error: ${data.error || 'Unknown error'}`);
+                // Update conversation history
+                conversationHistory.push({
+                    question: message,
+                    answer: data.answer
+                });
+                
+                // Add bot response to chat
+                let botResponse = data.answer;
+                if (data.sources && data.sources.length > 0) {
+                    botResponse += `<div class="sources">Sources: ${data.sources.join(', ')}</div>`;
                 }
+                addMessage(botResponse);
+                
             } catch (error) {
-                alert(`Error: ${error.message}`);
+                console.error('Error:', error);
+                addMessage('Sorry, there was an error processing your request. Please try again.');
             } finally {
-                // Hide loading
-                loadingDiv.style.display = 'none';
+                // Hide loading indicator
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        // Allow sending message with Enter key
+        document.getElementById('user-input').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                sendMessage();
             }
         });
     </script>
