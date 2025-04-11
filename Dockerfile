@@ -5,6 +5,7 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
+    poppler-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage Docker cache
@@ -14,7 +15,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Create necessary directories
-RUN mkdir -p /app/chroma_db /app/static /app/templates
+RUN mkdir -p /app/chroma_db /app/static /app/templates /app/books
 
 # Copy the rest of the application
 COPY . .
