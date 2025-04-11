@@ -1,112 +1,148 @@
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import List, Optional
-from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
-from langchain.schema.output_parser import StrOutputParser
+import logging
 import os
 from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from langchain.schema import StrOutputParser
+from langchain.schema.runnable import RunnablePassthrough
 
 # Load environment variables
 load_dotenv()
 
-app = FastAPI()
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Initialize FastAPI app
+app = FastAPI(title="Medical RAG System API")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Initialize conversation history
 conversation_history = []
 
+# Define models
 class Query(BaseModel):
-    question: str = Field(..., description="The question to be answered")
-    conversation_history: Optional[List[dict]] = Field(default_factory=list, description="Previous conversation history")
+    question: str = Field(..., description="The user's question")
+    conversation_history: List[dict] = Field(default_factory=list, description="Previous conversation messages")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "question": "What is physical therapy?",
+                "question": "What are the symptoms of diabetes?",
                 "conversation_history": []
             }
         }
 
 class Response(BaseModel):
-    answer: str = Field(..., description="The answer to the question")
-    sources: List[str] = Field(default_factory=list, description="Sources used to generate the answer")
-    conversation_history: List[dict] = Field(default_factory=list, description="Updated conversation history")
+    answer: str = Field(..., description="The system's response")
+    sources: List[str] = Field(..., description="List of source documents used")
+    conversation_history: List[dict] = Field(..., description="Updated conversation history")
 
     class Config:
         json_schema_extra = {
             "example": {
-                "answer": "Physical therapy is a healthcare profession...",
+                "answer": "Common symptoms of diabetes include...",
                 "sources": ["source1.pdf", "source2.pdf"],
                 "conversation_history": []
             }
         }
 
+# Add root endpoint
+@app.get("/")
+async def root():
+    return {
+        "message": "Welcome to the Medical RAG System API",
+        "endpoints": {
+            "health": "/health",
+            "chat": "/chat",
+            "query": "/query"
+        }
+    }
+
+# Add health check endpoint
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
+
+# Add chat endpoint
+@app.get("/chat")
+async def chat_ui():
+    return {"message": "Chat UI endpoint - implement your chat interface here"}
+
+# Enhance query with conversation history
 def enhance_query(query: str, conversation_history: List[dict]) -> str:
-    """Enhance the query with context from conversation history."""
     if not conversation_history:
         return query
     
-    # Get the last few exchanges for context
-    recent_history = conversation_history[-3:]  # Last 3 exchanges
+    # Extract previous questions and answers
     context = "\n".join([
-        f"Q: {exchange['question']}\nA: {exchange['answer']}"
-        for exchange in recent_history
+        f"Previous question: {msg['question']}\nPrevious answer: {msg['answer']}"
+        for msg in conversation_history[-3:]  # Use last 3 exchanges for context
     ])
     
-    return f"""Previous conversation:
+    return f"""Based on our previous conversation:
 {context}
 
-Current question: {query}
+Current question: {query}"""
 
-Please consider the context from the previous conversation when answering."""
-
+# Format response with sources
 def format_response_with_sources(response: str, sources: List[str]) -> str:
-    """Format the response to be more conversational and include sources."""
-    if not sources:
-        return response
+    # Create a conversational response using the language model
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", """You are a helpful medical assistant. 
+        Format the response in a friendly, conversational way while maintaining accuracy.
+        If there are sources, mention them naturally in the conversation."""),
+        ("human", f"Here's the raw response: {response}\nSources: {', '.join(sources)}\nPlease format this into a natural conversation.")
+    ])
     
-    source_text = "\n\nSources:\n" + "\n".join(f"- {source}" for source in sources)
-    return f"{response}{source_text}"
+    chain = prompt | ChatOpenAI(temperature=0.7) | StrOutputParser()
+    return chain.invoke({})
 
+# Query the knowledge base
 @app.post("/query", response_model=Response)
 async def query_knowledge_base(query: Query):
     try:
-        # Enhance query with conversation history
+        # Enhance the query with conversation history
         enhanced_query = enhance_query(query.question, query.conversation_history)
         
-        # Initialize the language model
-        llm = ChatOpenAI(
-            model_name="gpt-3.5-turbo",
-            temperature=0.7,
-            api_key=os.getenv("OPENAI_API_KEY")
-        )
+        # Here you would typically:
+        # 1. Query your vector store
+        # 2. Get relevant documents
+        # 3. Generate a response
         
-        # Create a prompt template
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a helpful AI assistant. Answer questions based on the provided context and previous conversation history. Be conversational and friendly."),
-            ("human", "{query}")
-        ])
+        # For now, return a mock response
+        mock_response = "I'm sorry, but the knowledge base is not fully initialized yet. Please try again later."
+        mock_sources = ["medical_database.pdf"]
         
-        # Create the chain
-        chain = prompt | llm | StrOutputParser()
-        
-        # Get the response
-        response = chain.invoke({"query": enhanced_query})
+        # Format the response
+        formatted_response = format_response_with_sources(mock_response, mock_sources)
         
         # Update conversation history
-        conversation_history.append({
+        updated_history = query.conversation_history + [{
             "question": query.question,
-            "answer": response
-        })
+            "answer": formatted_response
+        }]
         
-        # For now, return empty sources as we haven't implemented source tracking
         return Response(
-            answer=response,
-            sources=[],
-            conversation_history=conversation_history
+            answer=formatted_response,
+            sources=mock_sources,
+            conversation_history=updated_history
         )
         
     except Exception as e:
+        logger.error(f"Error processing query: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
