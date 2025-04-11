@@ -13,6 +13,10 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from langchain.schema import StrOutputParser
 from langchain.schema.runnable import RunnablePassthrough
+from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import PyPDFLoader
 
 # Load environment variables
 load_dotenv()
@@ -36,6 +40,17 @@ app.add_middleware(
 # Mount static files and templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
+
+# Initialize embeddings and vector store
+embeddings = HuggingFaceEmbeddings()
+vector_store = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
+
+# Initialize language model
+llm = ChatOpenAI(
+    model_name="gpt-3.5-turbo",
+    temperature=0.7,
+    api_key=os.getenv("OPENAI_API_KEY")
+)
 
 # Initialize conversation history
 conversation_history = []
@@ -108,7 +123,7 @@ def format_response_with_sources(response: str, sources: List[str]) -> str:
         ("human", f"Here's the raw response: {response}\nSources: {', '.join(sources)}\nPlease format this into a natural conversation.")
     ])
     
-    chain = prompt | ChatOpenAI(temperature=0.7) | StrOutputParser()
+    chain = prompt | llm | StrOutputParser()
     return chain.invoke({})
 
 # Query the knowledge base
@@ -118,17 +133,36 @@ async def query_knowledge_base(query: Query):
         # Enhance the query with conversation history
         enhanced_query = enhance_query(query.question, query.conversation_history)
         
-        # Here you would typically:
-        # 1. Query your vector store
-        # 2. Get relevant documents
-        # 3. Generate a response
+        # Search for relevant documents
+        docs = vector_store.similarity_search(enhanced_query, k=3)
         
-        # For now, return a mock response
-        mock_response = "I'm sorry, but the knowledge base is not fully initialized yet. Please try again later."
-        mock_sources = ["medical_database.pdf"]
+        # Create a prompt with the retrieved documents
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", """You are a helpful medical assistant. Answer the question based on the provided context.
+            If you don't know the answer, say you don't know. Don't make up information.
+            Be conversational and friendly in your response."""),
+            ("human", """Context: {context}
+            
+            Question: {question}""")
+        ])
+        
+        # Create the chain
+        chain = (
+            {"context": lambda x: "\n\n".join([doc.page_content for doc in docs]),
+             "question": lambda x: x["question"]}
+            | prompt
+            | llm
+            | StrOutputParser()
+        )
+        
+        # Get the response
+        response = chain.invoke({"question": enhanced_query})
+        
+        # Get source documents
+        sources = [doc.metadata.get("source", "Unknown source") for doc in docs]
         
         # Format the response
-        formatted_response = format_response_with_sources(mock_response, mock_sources)
+        formatted_response = format_response_with_sources(response, sources)
         
         # Update conversation history
         updated_history = query.conversation_history + [{
@@ -138,7 +172,7 @@ async def query_knowledge_base(query: Query):
         
         return Response(
             answer=formatted_response,
-            sources=mock_sources,
+            sources=sources,
             conversation_history=updated_history
         )
         
