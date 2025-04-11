@@ -3,8 +3,8 @@
 # See https://fly.io/docs/reference/configuration/ for information about how to use this file.
 #
 
-app = "medical-rag"
-primary_region = "lax"
+app = "rag-lvmqca"
+primary_region = "fra"
 
 [build]
   dockerfile = "Dockerfile"
@@ -23,4 +23,4 @@ primary_region = "lax"
 [[vm]]
   cpu_kind = "shared"
   cpus = 1
-  memory_mb = 2048
+  memory_mb = 1024
