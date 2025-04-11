@@ -42,15 +42,25 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # Initialize embeddings and vector store
-embeddings = HuggingFaceEmbeddings()
-vector_store = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
+try:
+    embeddings = HuggingFaceEmbeddings()
+    vector_store = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
+    logger.info("Vector store initialized successfully")
+except Exception as e:
+    logger.error(f"Error initializing vector store: {str(e)}")
+    vector_store = None
 
 # Initialize language model
-llm = ChatOpenAI(
-    model_name="gpt-3.5-turbo",
-    temperature=0.7,
-    api_key=os.getenv("OPENAI_API_KEY")
-)
+try:
+    llm = ChatOpenAI(
+        model_name="gpt-3.5-turbo",
+        temperature=0.7,
+        api_key=os.getenv("OPENAI_API_KEY")
+    )
+    logger.info("Language model initialized successfully")
+except Exception as e:
+    logger.error(f"Error initializing language model: {str(e)}")
+    llm = None
 
 # Initialize conversation history
 conversation_history = []
@@ -90,7 +100,12 @@ async def root(request: Request):
 # Health check endpoint
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    status = {
+        "status": "healthy",
+        "vector_store": "initialized" if vector_store else "not initialized",
+        "language_model": "initialized" if llm else "not initialized"
+    }
+    return status
 
 # Chat endpoint
 @app.get("/chat")
@@ -115,6 +130,9 @@ Current question: {query}"""
 
 # Format response with sources
 def format_response_with_sources(response: str, sources: List[str]) -> str:
+    if not llm:
+        return f"{response}\n\nSources: {', '.join(sources)}"
+    
     # Create a conversational response using the language model
     prompt = ChatPromptTemplate.from_messages([
         ("system", """You are a helpful medical assistant. 
@@ -130,11 +148,32 @@ def format_response_with_sources(response: str, sources: List[str]) -> str:
 @app.post("/query", response_model=Response)
 async def query_knowledge_base(query: Query):
     try:
+        if not vector_store:
+            return Response(
+                answer="I'm sorry, but the knowledge base is not fully initialized yet. Please try again later.",
+                sources=["System message"],
+                conversation_history=query.conversation_history
+            )
+        
+        if not llm:
+            return Response(
+                answer="I'm sorry, but the language model is not properly configured. Please check the system configuration.",
+                sources=["System message"],
+                conversation_history=query.conversation_history
+            )
+        
         # Enhance the query with conversation history
         enhanced_query = enhance_query(query.question, query.conversation_history)
         
         # Search for relevant documents
         docs = vector_store.similarity_search(enhanced_query, k=3)
+        
+        if not docs:
+            return Response(
+                answer="I'm sorry, but I couldn't find any relevant information in the knowledge base to answer your question.",
+                sources=[],
+                conversation_history=query.conversation_history
+            )
         
         # Create a prompt with the retrieved documents
         prompt = ChatPromptTemplate.from_messages([

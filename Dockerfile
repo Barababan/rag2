@@ -13,11 +13,14 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Create necessary directories
+RUN mkdir -p /app/chroma_db /app/static /app/templates
+
 # Copy the rest of the application
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p logs index_data
+# Make sure the chroma_db directory is writable
+RUN chmod -R 777 /app/chroma_db
 
 # Expose the port the app runs on
 EXPOSE 8080
